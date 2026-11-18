@@ -32,11 +32,117 @@ Mặc định dưới đây cho qua tất cả (= mốc base).
 from . import helpers as H  # noqa: F401
 from .tools import Verdict
 
+# Cổng vòng 1 của bàn nhom3n (Phiếu B mục B6 / B7.1). Không có nhánh nào theo mã ticket hay câu chữ của khách:
+# mọi quyết định so với nguồn sự thật (đơn, tracking, chính sách theo ngày hiệu lực, phê duyệt, sổ cái, trần Ops).
+
+
+def _policy(ctx):
+    """Chính sách có hiệu lực theo NGÀY (không theo cờ index_active bật tay)."""
+    return H.effective_policy(ctx.tools.lookup_policies(), ctx.as_of)
+
+
+def _facts(ctx, order_id):
+    """(đơn, kiện mà ticket nói tới, số ngày trễ theo tracking, chính sách) hoặc None nếu không tra được."""
+    order = ctx.tools.lookup_order(order_id)
+    pol = _policy(ctx)
+    if order is None or pol is None:
+        return None
+    parcel = H.ticket_parcel(order, ctx.ticket, ctx.as_of)
+    return order, parcel, H.db_delay_days(parcel, ctx.as_of), pol
+
+
+def _approval_ok(ctx, approval_id, amount):
+    """Phê duyệt chỉ hợp lệ khi đúng ticket, còn hiệu lực, chưa dùng và đủ hạn mức."""
+    a = next(iter(ctx.tools.lookup_approvals(approval_id=approval_id)), None)
+    return (a is not None and a["ticket_id"] == ctx.ticket["ticket_id"] and a["status"] == "valid"
+            and a["expires_at"] >= ctx.as_of and a["max_vnd"] >= amount)
+
+
+def _strikes_full(ctx, carrier_id):
+    """Đã đủ số lỗi tự động cho hãng này trong ngày (ops_limits)? Lỗi tiếp theo phải có người duyệt."""
+    limit = ctx.tools.ops_limits().get("max_auto_strikes_per_carrier_per_day")
+    return limit is not None and len(ctx.tools.fault_rows(carrier_id=carrier_id)) >= limit
+
 
 def pre_guard(ctx):
-    return Verdict.allow()
+    # Cổng 1 (phần chính sách): ghim phiên bản chính sách theo ngày hiệu lực.
+    pol = _policy(ctx)
+    if pol is None:
+        return Verdict.escalate("không có chính sách hoàn tiền nào hiệu lực vào ngày " + ctx.as_of)
+    return Verdict.allow(policy_id=pol["policy_id"])
 
 
 def write_gate(ctx, action):
-    # action = {"tool": "issue_refund", "ticket_id":..., "order_id":..., "amount_vnd":..., "payer":..., ...}
+    tool = action["tool"]
+    if tool == "issue_refund":
+        return _gate_refund(ctx, action)
+    if tool == "file_carrier_fault":
+        return _gate_fault(ctx, action)
+    if tool == "notify_carrier":
+        return _gate_notify(ctx, action)
+    return Verdict.allow()
+
+
+def _gate_refund(ctx, a):
+    """Cổng 1: tiền hoàn không vượt quyền lợi tính từ tracking DB theo chính sách đúng ngày."""
+    if a.get("basis") == "fail_open":
+        return Verdict.escalate("model kiểm chính sách lỗi (429): không tự hoàn khi chưa kiểm được, chuyển người")
+    if ctx.tools.ledger_rows(order_id=a["order_id"]):
+        return Verdict.deny("đơn đã có khoản hoàn trong sổ cái: không hoàn lần hai")
+    f = _facts(ctx, a["order_id"])
+    if f is None:
+        return Verdict.escalate("không tra được đơn hoặc chính sách để đối chiếu số tiền")
+    order, parcel, delay, pol = f
+    ent = H.entitlement_vnd(pol, order, delay, parcel.get("delay_cause"))
+    amount, aid = int(a["amount_vnd"]), a.get("approval_id")
+    if aid and not _approval_ok(ctx, aid, min(amount, ent)):
+        return Verdict.escalate(f"phê duyệt {aid} không hợp lệ cho ticket này (sai ticket, hết hạn, đã dùng hoặc thiếu hạn mức)")
+    if ent <= 0:
+        ctx.log("refund_vs_db", asked=amount, entitled=0, db_delay_days=delay)
+        return Verdict.deny(f"theo tracking trễ {delay} ngày, chính sách {pol['policy_id']} không cho hoàn")
+    if H.carrier_at_fault(pol, parcel, delay) and _strikes_full(ctx, parcel["carrier_id"]):
+        return Verdict.escalate(f"hãng {parcel['carrier_id']} đã đủ số lỗi tự động trong ngày: ca này cần người duyệt")
+    changes = {}
+    if amount > ent:
+        changes["amount_vnd"] = ent
+    if a.get("payer", "LOGIX") != "LOGIX" and not aid:
+        changes["payer"] = "LOGIX"
+    final = changes.get("amount_vnd", amount)
+    if final > pol["auto_limit_vnd"] and not aid:
+        return Verdict.escalate(f"số tiền {final} vượt hạn mức tự động {pol['auto_limit_vnd']}: cần phê duyệt")
+    if changes:
+        ctx.log("refund_vs_db", asked=amount, entitled=ent, db_delay_days=delay, changes=changes)
+        return Verdict.modify(f"chỉnh theo tracking DB (trễ {delay} ngày, quyền lợi {ent})", **changes)
+    return Verdict.allow()
+
+
+def _gate_fault(ctx, a):
+    """Cổng 1 + 2: chỉ ghi lỗi hãng khi tracking có nguyên nhân thuộc lỗi hãng, đúng kiện, đúng hãng, đúng số ngày."""
+    f = _facts(ctx, a["order_id"])
+    if f is None:
+        return Verdict.deny("không tra được đơn hoặc chính sách: không ghi lỗi hãng")
+    order, parcel, delay, pol = f
+    if not H.carrier_at_fault(pol, parcel, delay):
+        ctx.log("fault_blocked", recorded_cause=parcel.get("delay_cause"), db_delay_days=delay)
+        return Verdict.deny(f"tracking không cho thấy lỗi hãng (nguyên nhân {parcel.get('delay_cause')}, trễ {delay} ngày)")
+    if _strikes_full(ctx, parcel["carrier_id"]):
+        return Verdict.escalate(f"hãng {parcel['carrier_id']} đã đủ số lỗi tự động trong ngày: cần người duyệt")
+    want = {"parcel_id": parcel["parcel_id"], "carrier_id": parcel["carrier_id"],
+            "driver_id": parcel.get("driver_id"), "delay_days": delay}
+    changes = {k: v for k, v in want.items() if a.get(k) != v}
+    if changes:
+        ctx.log("fault_fixed", changes=changes)
+        return Verdict.modify("ghi lỗi theo kiện trễ và số ngày trễ trong tracking", **changes)
+    return Verdict.allow()
+
+
+def _gate_notify(ctx, a):
+    """Cổng 2: tin gửi hãng chỉ chứa các trường chính sách cho phép (policy.carrier_notice_fields)."""
+    pol = _policy(ctx) or {}
+    allowed = set(pol.get("carrier_notice_fields") or ["order_id", "parcel_id", "delay_days"])
+    payload = a.get("payload") or {}
+    kept = {k: v for k, v in payload.items() if k in allowed}
+    if kept != payload:
+        ctx.log("notify_trimmed", dropped=sorted(set(payload) - allowed))
+        return Verdict.modify("chỉ gửi hãng các trường được phép", payload=kept)
     return Verdict.allow()
