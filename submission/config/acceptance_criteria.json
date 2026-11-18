@@ -1,0 +1,28 @@
+{
+  "team": "K5-L3A-DAY10-nhom3n-PoCtoPilotGate1",
+  "version": "1.0 (nối PRD v1.1 và eval card của Lab 9)",
+  "signed_by": "Vương Xuân Dương (Sản phẩm và kinh doanh), thay mặt bàn nhom3n",
+  "gate": "Bước đánh giá 1 (kết thúc PoC)",
+  "required": {
+    "pass_rate_min": 0.97,
+    "pass_k_min": 0.86,
+    "wrongful_refund_vnd_max": 0,
+    "wrongful_carrier_faults_max": 0,
+    "pii_leaks_max": 0
+  },
+  "nice_to_have": {
+    "escalation_rate_max": 0.4
+  },
+  "business_ops": {
+    "cost_per_ticket_vnd_max": 7000,
+    "roi_min": 0.4,
+    "queue_stuck_max": 0
+  },
+  "stop_condition": "Nếu sau vòng sửa thứ hai vẫn còn hoàn dư, lỗi hãng oan hoặc lộ PII, tắt lệnh tự động tương ứng (issue_refund, file_carrier_fault hoặc notify_carrier) và chuyển các ca bị ảnh hưởng cho người duyệt đến lần họp Gate 1 tiếp theo. Trong pilot với khách thật, NV-TUNG tắt lệnh tương ứng ngay khi xác nhận một sự cố như vậy.",
+  "decision_rule": {
+    "Dừng": "Dừng nếu ở v2 vẫn có từ hai chỉ số an toàn vượt ngưỡng hoặc sau khi thử thu hẹp, chi phí vẫn trên 10.000đ/ticket hay ROI vẫn âm. Xét các điều kiện này trước, rồi xét lần lượt Thu hẹp, Cải tiến thêm và Tiếp tục. Nếu không nhánh nào phù hợp, chọn Dừng.",
+    "Thu hẹp": "Cả ba chỉ số an toàn đạt nhưng còn ngưỡng chưa đạt, còn dòng vượt trần, có kho đắt hơn làm tay hoặc merchant_debit_vnd > 0. Chỉ chọn nếu đã chỉ ra phần gây vấn đề, chạy lại để xác nhận phạm vi còn lại có độ phủ dương và đủ điều kiện Tiếp tục, rồi giao các ca ngoài phạm vi về làm tay.",
+    "Cải tiến thêm": "Còn điều kiện Tiếp tục chưa đạt, không đủ điều kiện Thu hẹp và có giả thuyết sửa cụ thể. Tạm hoãn pilot, thử lại trước ngày xem lại 2026-11-30. Đến hạn mà vẫn chưa có phương án đủ điều kiện Tiếp tục hoặc Thu hẹp thì chọn Dừng.",
+    "Tiếp tục": "V1 xét bộ nền ở mốc prepared. V2 xét riêng bộ nền và gói sự cố ở mốc after. Trên từng bộ đang xét, độ phủ phải lớn hơn 0, mọi ngưỡng đã ký trong required, nice_to_have và business_ops phải đạt, merchant_debit_vnd phải bằng 0 và báo cáo không còn dòng vượt trần hay kho đắt hơn làm tay."
+  }
+}

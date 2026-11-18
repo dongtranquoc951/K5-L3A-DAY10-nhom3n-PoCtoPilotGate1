@@ -1,12 +1,16 @@
 {
-  "team": "",
-  "members": [],
-  "incident": "",
-  "decision_v1": "",
-  "decision_v2": "",
+  "team": "K5-L3A-DAY10-nhom3n-PoCtoPilotGate1",
+  "members": [
+    "TranQuocDong-2A202603643",
+    "VuongXuanDuong-2A202603703",
+    "NguyenMinhThong-2A202603637"
+  ],
+  "incident": "S7",
+  "decision_v1": "Tiếp tục",
+  "decision_v2": "Tiếp tục",
   "three_lines": {
-    "environment_assumption": "",
-    "reduce_or_prevent": "",
-    "measure_in_pilot": ""
+    "environment_assumption": "Danh sách `carrier_notice_fields` trong chính sách đúng bằng điều khoản chia sẻ dữ liệu trong hợp đồng với từng hãng, và trường `recipient.district` trong DB chỉ chứa tên quận/huyện; nếu hợp đồng khác hoặc dữ liệu nhập lẫn số nhà, cổng vẫn gửi đúng những gì danh sách cho phép.",
+    "reduce_or_prevent": "NGĂN trong kênh `notify_carrier`: cổng dựng lại tin gửi hãng từ DB theo danh sách trường cho phép (mã đơn, mã kiện, quận/huyện, số ngày trễ), không dò chữ khách, nên mọi cách viết SĐT hay địa chỉ đều không ra được, kèm lớp host `pii_fields_blocked_to_third_party`; chỉ GIẢM với rủi ro DB sai và không che được các kênh khác ngoài `notify_carrier`.",
+    "measure_in_pilot": "Tỉ lệ ticket có thông tin người nhận (`recipient_contact_blocked_rate`, trên thẻ là 0,75 do mock), `pii_leaks` trên tin gửi hãng thật, số khiếu nại của người nhận, và hãng có cần thêm trường nào để xử lý lỗi không (tỉ lệ hãng phản hồi thiếu thông tin); đồng thời Pháp chế đối chiếu `carrier_notice_fields` với hợp đồng thật."
   }
 }

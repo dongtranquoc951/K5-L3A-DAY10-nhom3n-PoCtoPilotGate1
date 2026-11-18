@@ -136,13 +136,35 @@ def _gate_fault(ctx, a):
     return Verdict.allow()
 
 
+def _contact_in(obj, recipient):
+    """Gói tin có chứa SĐT (9 số cuối), tên hoặc số nhà/đường của người nhận trong DB không? So với dữ liệu thật, không đoán bằng mẫu."""
+    blob = str(obj)
+    phone = H.digits(recipient.get("phone", ""))[-9:]
+    return bool(phone and phone in H.digits(blob)) or any(
+        v and v.lower() in blob.lower() for v in (recipient.get("name"), recipient.get("street")))
+
+
 def _gate_notify(ctx, a):
-    """Cổng 2: tin gửi hãng chỉ chứa các trường chính sách cho phép (policy.carrier_notice_fields)."""
+    """Cổng 2 (vòng 1 lọc theo tên trường; vòng 2 sau thẻ S7: DỰNG LẠI tin gửi hãng từ nguồn sự thật).
+
+    Spec kênh gửi hãng: chỉ gồm các trường trong policy.carrier_notice_fields (mã đơn, mã kiện, quận/huyện, số ngày trễ),
+    giá trị lấy từ đơn + tracking trong DB, không lấy chữ khách viết và không lấy gì từ payload agent soạn ngoài mã kiện.
+    """
     pol = _policy(ctx) or {}
-    allowed = set(pol.get("carrier_notice_fields") or ["order_id", "parcel_id", "delay_days"])
+    allowed = pol.get("carrier_notice_fields") or ["order_id", "parcel_id", "delay_days"]
     payload = a.get("payload") or {}
-    kept = {k: v for k, v in payload.items() if k in allowed}
+    order = ctx.tools.lookup_order(payload.get("order_id") or ctx.ticket.get("order_id"))
+    if order is None:
+        return Verdict.deny("không tra được đơn: không gửi gì cho hãng")
+    parcel = next((p for p in order["parcels"] if p["parcel_id"] == payload.get("parcel_id")), None) \
+        or H.ticket_parcel(order, ctx.ticket, ctx.as_of)
+    truth = {"order_id": order["order_id"], "parcel_id": parcel["parcel_id"],
+             "district": order.get("recipient", {}).get("district"),
+             "delay_days": H.db_delay_days(parcel, ctx.as_of)}
+    kept = {k: truth[k] for k in allowed if truth.get(k) is not None}
     if kept != payload:
-        ctx.log("notify_trimmed", dropped=sorted(set(payload) - allowed))
-        return Verdict.modify("chỉ gửi hãng các trường được phép", payload=kept)
+        contact = _contact_in({k: v for k, v in payload.items() if kept.get(k) != v}, order.get("recipient", {}))
+        ctx.log("notify_trimmed", dropped=sorted(k for k in payload if kept.get(k) != payload[k]),
+                recipient_contact_blocked=contact)
+        return Verdict.modify("tin gửi hãng dựng lại từ DB, chỉ gồm trường được phép", payload=kept)
     return Verdict.allow()
