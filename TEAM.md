@@ -5,7 +5,7 @@
 - Tên nhóm (`TenNhom`, không dấu, không khoảng trắng): `nhom3n`
 - Lớp: `L3A`
 - Repo của bàn: `K5-L3A-DAY10-nhom3n-PoCtoPilotGate1`
-- Thẻ sự cố đã bốc (S1–S8):
+- Thẻ sự cố đã bốc (S1–S8): `S7`
 
 ## Thành viên
 
@@ -23,20 +23,56 @@ Ghi `members` trong `submission/submission.json` theo dạng `"HoVaTen-MSSV"`, k
 
 Mỗi thành viên tự viết một mục bên dưới (chép mẫu, đổi tiêu đề thành họ tên không dấu và MSSV, ví dụ `## NguyenVanAn-20241234`).
 
-## HoVaTen-MSSV
+## TranQuocDong-2A202603643
 
 ### Phần việc phụ trách
 
-Vai trong bàn; câu nào của đề, mục nào của phiếu A/B/C, file nào (`lab10/guards.py`, `config/operating_gates.json`, …).
+Kỹ sư cổng. Phiếu B mục B7.1–B7.3 và Phiếu C mục C7–C8.
 
 ### Đóng góp cụ thể
 
-...
+Đông tự ghi phần đã thực hiện và nơi đã dùng AI.
 
 ### Bằng chứng
 
-Mã commit, mã lần chạy (`runs/<mã>`), dòng trong phiếu.
+Đối chiếu commit chốt cổng `a6e276d` và commit xử lý S7 `7877338` với phần việc của mình.
 
 ### Exit ticket
 
-Một điều học được, một điều còn chưa chắc.
+Đông tự ghi một điều học được và một điều còn chưa chắc.
+
+## VuongXuanDuong-2A202603703
+
+### Phần việc phụ trách
+
+Sản phẩm và kinh doanh. Phiếu A, Phiếu B mục B7.4 và B8, Phiếu C mục C12.
+
+### Đóng góp cụ thể
+
+Dương tự ghi phần đã thực hiện và nơi đã dùng AI.
+
+### Bằng chứng
+
+Đối chiếu bản tiêu chí ký ở `404d387`, Phiếu B mục B8 và Phiếu C mục C12 với phần việc của mình.
+
+### Exit ticket
+
+Dương tự ghi một điều học được và một điều còn chưa chắc.
+
+## NguyenMinhThong-2A202603637
+
+### Phần việc phụ trách
+
+Vận hành và pháp lý. Phiếu B mục B4–B5 và B7.5–B7.6, Phiếu C mục C10–C11.
+
+### Đóng góp cụ thể
+
+Thông tự ghi phần đã thực hiện và nơi đã dùng AI.
+
+### Bằng chứng
+
+Đối chiếu checklist và runbook trong Phiếu B và Phiếu C với phần việc của mình.
+
+### Exit ticket
+
+Thông tự ghi một điều học được và một điều còn chưa chắc.

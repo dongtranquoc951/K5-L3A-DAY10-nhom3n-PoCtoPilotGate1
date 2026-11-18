@@ -1,6 +1,6 @@
 {
   "_huong_dan": "Cổng kinh doanh, vận hành, pháp lý mà trợ lý PHẢI tuân theo. Bàn điền ở vòng 1, chốt bằng python3 -m lab10.checkpoint, rồi được sửa tiếp ở vòng 2. null = chưa đặt cổng này. Giải thích từng dòng: docs/guide.md, mục Cổng trong config (#ban-do).",
-  "_nhom3n": "Vòng 1 (Phiếu B mục B7.4–B7.5). Số lấy từ ops_limits/ops_facts đã thống nhất với Ops/Finance và từ Bản tiêu chí đã ký, không lấy từ ví dụ.",
+  "_nhom3n": "Vòng 2 (Phiếu C). Pilot giữ 4 kho HN, HCM, DN, CT như v1 (mọi ngưỡng đã ký đều đạt, không có lý do thu hẹp). Công suất duyệt tính theo số người trực và năng suất trong ops_facts.",
   "business": {
     "daily_refund_cap_vnd": 2000000,
     "cost_budget_per_ticket_vnd": 1500,
@@ -11,7 +11,7 @@
     "pic": "NV-TUNG",
     "approver_id": "NV-HANH",
     "reviewers_on_shift": 1,
-    "review_capacity_per_hour": 6,
+    "review_capacity_per_hour": null,
     "max_queue_wait_minutes": 60,
     "stop_conditions": [
       "Có một khoản hoàn sai so với tracking DB đã được xác nhận: tắt issue_refund, chuyển mọi ca hoàn tiền cho người duyệt",

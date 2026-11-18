@@ -10,7 +10,7 @@
   "decision_v2": "Tiếp tục",
   "three_lines": {
     "environment_assumption": "Danh sách `carrier_notice_fields` trong chính sách đúng bằng điều khoản chia sẻ dữ liệu trong hợp đồng với từng hãng, và trường `recipient.district` trong DB chỉ chứa tên quận/huyện; nếu hợp đồng khác hoặc dữ liệu nhập lẫn số nhà, cổng vẫn gửi đúng những gì danh sách cho phép.",
-    "reduce_or_prevent": "NGĂN trong kênh `notify_carrier`: cổng dựng lại tin gửi hãng từ DB theo danh sách trường cho phép (mã đơn, mã kiện, quận/huyện, số ngày trễ), không dò chữ khách, nên mọi cách viết SĐT hay địa chỉ đều không ra được, kèm lớp host `pii_fields_blocked_to_third_party`; chỉ GIẢM với rủi ro DB sai và không che được các kênh khác ngoài `notify_carrier`.",
-    "measure_in_pilot": "Tỉ lệ ticket có thông tin người nhận (`recipient_contact_blocked_rate`, trên thẻ là 0,75 do mock), `pii_leaks` trên tin gửi hãng thật, số khiếu nại của người nhận, và hãng có cần thêm trường nào để xử lý lỗi không (tỉ lệ hãng phản hồi thiếu thông tin); đồng thời Pháp chế đối chiếu `carrier_notice_fields` với hợp đồng thật."
+    "reduce_or_prevent": "NGĂN việc chuyển thông tin từ nội dung agent soạn trong kênh `notify_carrier`. Cổng kiểm dòng lỗi đã ghi cho đúng đơn, kiện và hãng, rồi dựng lại bốn trường được phép từ DB. Với dữ liệu nguồn sai, phép lọc quận/huyện chỉ GIẢM rủi ro vì chỉ nhận ra thông tin liên hệ đã biết. Các kênh khác cần kiểm riêng.",
+    "measure_in_pilot": "Đo `recipient_contact_blocked_rate` ở 4 kho pilot (S7 mô phỏng 30/40 lượt), rà tin thực tế để đếm ca lộ đã xác nhận, theo dõi khiếu nại và tỉ lệ hãng báo thiếu thông tin. Pháp chế đối chiếu `carrier_notice_fields` với hợp đồng trước khi bật gửi."
   }
 }

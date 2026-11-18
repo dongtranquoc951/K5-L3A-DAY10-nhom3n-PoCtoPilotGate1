@@ -64,6 +64,24 @@ def _strikes_full(ctx, carrier_id):
     return limit is not None and len(ctx.tools.fault_rows(carrier_id=carrier_id)) >= limit
 
 
+def _auto_refunded_today_for(ctx, customer_id, today_total):
+    """Tính tiền hoàn tự động hôm nay cho một khách, bỏ qua sổ cái từ ngày trước."""
+    # Sổ cái trả về theo thứ tự ghi. Tổng hoàn tự động hôm nay giúp xác định
+    # phần cuối của sổ cái thuộc ngày hiện tại, kể cả khi có dòng đã được duyệt.
+    remaining = today_total
+    total = 0
+    for row in reversed(ctx.tools.ledger_rows()):
+        if remaining == 0:
+            break
+        if row.get("approval_id"):
+            continue
+        amount = row["amount_vnd"]
+        remaining -= amount
+        if row["customer_id"] == customer_id:
+            total += amount
+    return total
+
+
 def pre_guard(ctx):
     # Cổng 1 (phần chính sách): ghim phiên bản chính sách theo ngày hiệu lực.
     pol = _policy(ctx)
@@ -108,8 +126,17 @@ def _gate_refund(ctx, a):
     if a.get("payer", "LOGIX") != "LOGIX" and not aid:
         changes["payer"] = "LOGIX"
     final = changes.get("amount_vnd", amount)
-    if final > pol["auto_limit_vnd"] and not aid:
-        return Verdict.escalate(f"số tiền {final} vượt hạn mức tự động {pol['auto_limit_vnd']}: cần phê duyệt")
+    if not aid:
+        if final > pol["auto_limit_vnd"]:
+            return Verdict.escalate(f"số tiền {final} vượt hạn mức tự động {pol['auto_limit_vnd']}: cần phê duyệt")
+        cap = ctx.tools.ops_limits().get("max_auto_refund_per_customer_per_day_vnd")
+        if cap is not None:
+            today_total = ctx.tools.auto_refund_today_vnd()
+            if today_total + final > cap:
+                spent = _auto_refunded_today_for(ctx, order["customer_id"], today_total)
+                if spent + final > cap:
+                    ctx.log("customer_daily_auto_refund_cap", spent_vnd=spent, requested_vnd=final, cap_vnd=cap)
+                    return Verdict.escalate(f"vượt trần hoàn tự động {cap}đ mỗi khách trong ngày: cần phê duyệt")
     if changes:
         ctx.log("refund_vs_db", asked=amount, entitled=ent, db_delay_days=delay, changes=changes)
         return Verdict.modify(f"chỉnh theo tracking DB (trễ {delay} ngày, quyền lợi {ent})", **changes)
@@ -145,25 +172,35 @@ def _contact_in(obj, recipient):
 
 
 def _gate_notify(ctx, a):
-    """Cổng 2 (vòng 1 lọc theo tên trường; vòng 2 sau thẻ S7: DỰNG LẠI tin gửi hãng từ nguồn sự thật).
+    """Dựng tin từ DB cho đúng đơn, kiện và hãng đã ghi lỗi trên ticket."""
+    order_id = ctx.ticket.get("order_id")
+    facts = _facts(ctx, order_id)
+    if facts is None:
+        return Verdict.deny("không tra được đơn hoặc chính sách: không gửi gì cho hãng")
+    order, parcel, delay, pol = facts
+    if order["customer_id"] != ctx.ticket.get("customer_id"):
+        return Verdict.deny("ticket không thuộc chủ đơn: không gửi gì cho hãng")
+    ticket_id = ctx.ticket["ticket_id"]
+    carrier_id = parcel["carrier_id"]
+    if a.get("ticket_id") != ticket_id or a.get("carrier_id") != carrier_id:
+        return Verdict.deny("ticket hoặc hãng nhận tin không khớp")
+    if not ctx.tools.fault_rows(ticket_id=ticket_id, order_id=order_id,
+                                 parcel_id=parcel["parcel_id"], carrier_id=carrier_id):
+        return Verdict.deny("chưa ghi lỗi cho đúng kiện và hãng: không gửi thông báo")
 
-    Spec kênh gửi hãng: chỉ gồm các trường trong policy.carrier_notice_fields (mã đơn, mã kiện, quận/huyện, số ngày trễ),
-    giá trị lấy từ đơn + tracking trong DB, không lấy chữ khách viết và không lấy gì từ payload agent soạn ngoài mã kiện.
-    """
-    pol = _policy(ctx) or {}
-    allowed = pol.get("carrier_notice_fields") or ["order_id", "parcel_id", "delay_days"]
-    payload = a.get("payload") or {}
-    order = ctx.tools.lookup_order(payload.get("order_id") or ctx.ticket.get("order_id"))
-    if order is None:
-        return Verdict.deny("không tra được đơn: không gửi gì cho hãng")
-    parcel = next((p for p in order["parcels"] if p["parcel_id"] == payload.get("parcel_id")), None) \
-        or H.ticket_parcel(order, ctx.ticket, ctx.as_of)
-    truth = {"order_id": order["order_id"], "parcel_id": parcel["parcel_id"],
-             "district": order.get("recipient", {}).get("district"),
-             "delay_days": H.db_delay_days(parcel, ctx.as_of)}
+    recipient = order.get("recipient") or {}
+    district = recipient.get("district")
+    if not isinstance(district, str) or _contact_in(district, recipient):
+        district = None
+    truth = {"order_id": order_id, "parcel_id": parcel["parcel_id"],
+             "district": district, "delay_days": delay}
+    allowed = pol.get("carrier_notice_fields") or ()
     kept = {k: truth[k] for k in allowed if truth.get(k) is not None}
+    if not kept:
+        return Verdict.deny("chính sách không cho gửi trường nào trong thông báo")
+    payload = a.get("payload") or {}
     if kept != payload:
-        contact = _contact_in({k: v for k, v in payload.items() if kept.get(k) != v}, order.get("recipient", {}))
+        contact = _contact_in({k: v for k, v in payload.items() if kept.get(k) != v}, recipient)
         ctx.log("notify_trimmed", dropped=sorted(k for k in payload if kept.get(k) != payload[k]),
                 recipient_contact_blocked=contact)
         return Verdict.modify("tin gửi hãng dựng lại từ DB, chỉ gồm trường được phép", payload=kept)
